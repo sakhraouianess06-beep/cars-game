@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>لا تصدم السيارات!</title>
+<style>
+:root{--bg:#10182b;--fg:#fff;--accent:#ff9f1c;box-sizing:border-box}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#10182b}}
+:root[data-theme="dark"]{--bg:#10182b}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 0;font-weight:800;font-size:20px;text-shadow:0 2px 6px #0008;pointer-events:none}
+#msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;background:#0009;padding:24px}
+#msg h1{margin:0;font-size:34px}#msg p{margin:0;opacity:.85}
+button{background:var(--accent);color:#1b1b1b;border:0;border-radius:14px;padding:14px 40px;font-size:20px;font-weight:800}
+</style>
+</head>
+<body>
+<div id="hud"><span>📍 <b id="sc">0</b></span><span>🪙 <b id="co">0</b></span><span>⚡ <b id="sp">0</b></span><span>🏆 <b id="hs">0</b></span></div>
+<div id="msg"><h1>🏎️ لا تصدم السيارات!</h1><p>اسحب إصبعك أو استعمل الأسهم ◀ ▶ لقيادة السيارة.<br>ليل وسرعة عالية، والسيارات تغيّر مساراتها!</p><button id="go">ابدأ السباق</button></div>
+<script>
+const $=id=>document.getElementById(id);
+let best=0;try{best=+localStorage.getItem('hr_hard_best')||0}catch(e){}
+$('hs').textContent=best;
+const sfx=(()=>{let ac,mg,conv,nb,eg,o=[],ef,lf,wg,wf,rg,kg,lastG=0,cb=0,lastC=0;
+function init(){if(ac)return;try{
+ac=new (window.AudioContext||window.webkitAudioContext)();
+const cmp=ac.createDynamicsCompressor();cmp.connect(ac.destination);
+mg=ac.createGain();mg.gain.value=.85;mg.connect(cmp);
+const L=ac.sampleRate*1.6|0,ib=ac.createBuffer(2,L,ac.sampleRate);
+for(let c=0;c<2;c++){const d=ib.getChannelData(c);for(let i=0;i<L;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/L,3)}
+conv=ac.createConvolver();conv.buffer=ib;const rv=ac.createGain();rv.gain.value=.3;conv.connect(rv);rv.connect(mg);
+nb=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate);const nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+const ws=ac.createWaveShaper(),cv=new Float32Array(256);for(let i=0;i<256;i++){cv[i]=Math.tanh((i/128-1)*3)}ws.curve=cv;
+ef=ac.createBiquadFilter();ef.type='lowpass';ef.frequency.value=600;ef.Q.value=2;
+eg=ac.createGain();eg.gain.value=0;
+[['sawtooth',1],['sawtooth',2.01],['square',.5]].forEach(([t,m])=>{const x=ac.createOscillator();x.type=t;x.m=m;x.connect(ws);x.start();o.push(x)});
+ws.connect(ef);ef.connect(eg);eg.connect(mg);
+lf=ac.createOscillator();lf.frequency.value=30;const lg=ac.createGain();lg.gain.value=.05;lf.connect(lg);lg.connect(eg.gain);lf.start();
+const mk=(type,fq,q)=>{const x=ac.createBufferSource();x.buffer=nb;x.loop=true;const f=ac.createBiquadFilter();f.type=type;f.frequency.value=fq;f.Q.value=q;const g=ac.createGain();g.gain.value=0;x.connect(f);f.connect(g);g.connect(mg);x.start();return{f,g}};
+const w=mk('bandpass',600,.6);wf=w.f;wg=w.g;
+rg=mk('lowpass',160,1).g;
+kg=mk('bandpass',2200,8).g;
+}catch(e){ac=null}}
+function pan(n,p){if(ac.createStereoPanner){const x=ac.createStereoPanner();x.pan.value=Math.max(-1,Math.min(1,p||0));n.connect(x);return x}return n}
+function noise(dur,type,f0,f1,vol,p,att){const t=ac.currentTime,x=ac.createBufferSource();x.buffer=nb;x.loop=true;const fl=ac.createBiquadFilter();fl.type=type;fl.frequency.setValueAtTime(f0,t);fl.frequency.exponentialRampToValueAtTime(f1,t+dur);const g=ac.createGain();g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+(att||.01));g.gain.exponentialRampToValueAtTime(.001,t+dur);x.connect(fl);fl.connect(g);pan(g,p).connect(mg);g.connect(conv);x.start(t);x.stop(t+dur+.05)}
+function tone(fq,t0,dur,vol,type,fq2,p){const t=ac.currentTime+t0,x=ac.createOscillator();x.type=type||'sine';x.frequency.setValueAtTime(fq,t);if(fq2)x.frequency.exponentialRampToValueAtTime(fq2,t+dur);const g=ac.createGain();g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.008);g.gain.exponentialRampToValueAtTime(.001,t+dur);x.connect(g);pan(g,p).connect(mg);g.connect(conv);x.start(t);x.stop(t+dur+.05)}
+return{
+start(){init();if(!ac)return;if(ac.state==='suspended')ac.resume();lastG=0;cb=0;
+ eg.gain.cancelScheduledValues(ac.currentTime);eg.gain.setTargetAtTime(.1,ac.currentTime,.3);
+ tone(35,0,.7,.5,'sawtooth',90);noise(.5,'lowpass',400,100,.4,0,.05)},
+engine(v,steer){if(!ac)return;const t=ac.currentTime,g=Math.min(4,Math.max(0,Math.floor((v-40)/18))),rpm=Math.max(0,(v-40)/18-g);
+ if(g>lastG){lastG=g;eg.gain.setTargetAtTime(.02,t,.01);eg.gain.setTargetAtTime(.1,t+.12,.05);noise(.25,'bandpass',2500,900,.15,0,.005)}
+ const fq=48+rpm*85+g*6;o.forEach(x=>x.frequency.setTargetAtTime(fq*x.m,t,.04));
+ ef.frequency.setTargetAtTime(400+rpm*700+g*120,t,.08);lf.frequency.setTargetAtTime(fq*.5,t,.05);
+ const r=v/120;wg.gain.setTargetAtTime(.02+r*r*.22,t,.1);wf.frequency.setTargetAtTime(350+r*1400,t,.1);rg.gain.setTargetAtTime(.04+r*.14,t,.1);
+ kg.gain.setTargetAtTime(Math.min(1,Math.max(0,(steer-1.4)/2))*r*.12,t,.05)},
+coin(){if(!ac)return;const n=performance.now();cb=n-lastC<1200?Math.min(cb+1,7):0;lastC=n;const f=1319*Math.pow(2,cb/6);
+ tone(f,0,.18,.18,'triangle');tone(f*1.5,.06,.3,.16,'sine');tone(f*2,.11,.35,.1,'sine')},
+whoosh(side){if(!ac)return;noise(.55,'bandpass',300,1800,.35,side/4,.12)},
+horn(side){if(!ac)return;[440,554].forEach(f=>tone(f,0,.45,.08,'square',f*.93,side/4))},
+crash(){if(!ac)return;const t=ac.currentTime;eg.gain.cancelScheduledValues(t);eg.gain.setTargetAtTime(0,t,.05);
+ wg.gain.setTargetAtTime(0,t,.2);rg.gain.setTargetAtTime(0,t,.2);kg.gain.setTargetAtTime(0,t,.1);
+ tone(130,0,.5,1,'sine',28);noise(1.4,'lowpass',3500,80,1,0,.005);noise(.5,'bandpass',2600,500,.5,0,.01);
+ [523,811,1370,2100].forEach((f,i)=>tone(f,i*.012,.5,.12,'triangle',f*.97));
+ for(let i=0;i<7;i++)setTimeout(()=>noise(.1,'highpass',5000+Math.random()*3000,8000,.15,Math.random()*2-1,.003),i*70+Math.random()*80)},
+mute(m){if(ac)mg.gain.setTargetAtTime(m?0:.85,ac.currentTime,.05)}
+}})();
+document.addEventListener('visibilitychange',()=>sfx.mute(document.hidden));
+const cv=document.createElement('canvas');document.body.prepend(cv);
+const ctx=cv.getContext('2d');
+const CH=5,CD=11;
+let W,H,dpr,hor,f,skyG,fogG;
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;
+hor=H*.42;f=Math.min(W*1.15,H*.62);
+skyG=ctx.createLinearGradient(0,0,0,hor);skyG.addColorStop(0,'#070c1c');skyG.addColorStop(1,'#26345f');
+fogG=ctx.createLinearGradient(0,hor,0,hor+H*.25);fogG.addColorStop(0,'rgba(38,52,95,1)');fogG.addColorStop(1,'rgba(38,52,95,0)')}
+addEventListener('resize',resize);resize();
+const cols=['#2a9d8f','#f4a261','#457b9d','#9b5de5','#ffd166','#e9ecef','#06d6a0'];
+let cars=[],coins=[],sparks=[],run=false,v=45,dist=0,coinN=0,px=0,tx=0,tSpawn=1,cSpawn=2,shake=0,dashOff=0,treeOff=0,camX=0,alive=true,last=performance.now();
+const trees=[];for(let i=0;i<24;i++)trees.push({x:(i%2?1:-1)*(8.5+Math.random()*7),i});
+const stars=[];for(let i=0;i<90;i++)stars.push([Math.random(),Math.random()*.9,Math.random()<.2?2:1]);
+const lane=()=>[-3.4,0,3.4][Math.floor(Math.random()*3)];
+const sc=z=>f/(CD-z);
+function P(x,z){const s=sc(z);return[W/2+(x-camX)*s,hor+CH*s]}
+function poly(a,c){ctx.fillStyle=c;ctx.beginPath();a.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fill()}
+function rr(x,y,w,h,r){if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}else ctx.fillRect(x,y,w,h)}
+function carDraw(x,z,col,front,tilt){if(CD-z<1.6)return;const s=sc(z),[gx,gy]=P(x,z),lc=front?'#fff6c8':'#ff2a2a';
+ctx.save();if(tilt){ctx.translate(gx,gy);ctx.rotate(tilt);ctx.translate(-gx,-gy)}
+ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.ellipse(gx,gy,1.1*s,.28*s,0,0,7);ctx.fill();
+ctx.fillStyle='#111';ctx.fillRect(gx-1.02*s,gy-.8*s,.3*s,.8*s);ctx.fillRect(gx+.72*s,gy-.8*s,.3*s,.8*s);
+ctx.fillStyle=col;rr(gx-.9*s,gy-1.25*s,1.8*s,.85*s,.18*s);
+poly([[gx-.65*s,gy-1.25*s],[gx-.48*s,gy-1.85*s],[gx+.48*s,gy-1.85*s],[gx+.65*s,gy-1.25*s]],col);
+poly([[gx-.55*s,gy-1.3*s],[gx-.4*s,gy-1.78*s],[gx+.4*s,gy-1.78*s],[gx+.55*s,gy-1.3*s]],'#16202c');
+ctx.shadowColor=lc;ctx.shadowBlur=Math.min(26,s*.9);ctx.fillStyle=lc;
+ctx.fillRect(gx-.82*s,gy-1.12*s,.5*s,.2*s);ctx.fillRect(gx+.32*s,gy-1.12*s,.5*s,.2*s);
+ctx.shadowBlur=0;ctx.fillStyle='#eee';ctx.fillRect(gx-.25*s,gy-.78*s,.5*s,.17*s);
+ctx.restore()}
+function render(){
+ctx.setTransform(dpr,0,0,dpr,0,0);ctx.globalAlpha=1;ctx.shadowBlur=0;ctx.save();
+if(shake>0)ctx.translate((Math.random()-.5)*shake*14,(Math.random()-.5)*shake*10);
+ctx.fillStyle=skyG;ctx.fillRect(-20,-20,W+40,hor+20);
+ctx.fillStyle='#e8ecff';for(const t of stars)ctx.fillRect(t[0]*W,t[1]*hor,t[2],t[2]);
+ctx.fillStyle='#fff4d0';ctx.beginPath();ctx.arc(W*.8,hor*.28,26,0,7);ctx.fill();
+ctx.fillStyle='#0e2819';ctx.fillRect(-20,hor,W+40,H-hor+20);
+const zf=-235,zb=CD-f*CH/(H-hor);
+poly([P(-6,zf),P(6,zf),P(6,zb),P(-6,zb)],'#2b2d33');
+for(const g of[-1,1])poly([P(g*6,zf),P(g*5.65,zf),P(g*5.65,zb),P(g*6,zb)],'#e8e8ee');
+for(const l of[-1.7,1.7])for(let i=0;i<20;i++){const z=((dashOff+i*12)%240)-235;if(z-3>=zb)continue;const z0=Math.min(z,zb);
+poly([P(l-.1,z-3),P(l+.1,z-3),P(l+.1,z0),P(l-.1,z0)],'#f0f0f5')}
+ctx.fillStyle=fogG;ctx.fillRect(-20,hor,W+40,H*.25);
+if(alive){const y1=P(0,-2)[1],y2=P(0,-80)[1],g=ctx.createLinearGradient(0,y1,0,y2);g.addColorStop(0,'rgba(255,240,190,.30)');g.addColorStop(1,'rgba(255,240,190,0)');
+poly([P(px-1.4,-2),P(px+1.4,-2),P(px+4,-80),P(px-4,-80)],g)}
+const L=[];
+for(const t of trees)L.push({z:((treeOff+t.i*9)%216)-210,k:0,x:t.x});
+for(const c of cars)L.push({z:c.z,k:1,c});
+for(const c of coins)L.push({z:c.z,k:2,c});
+if(alive)L.push({z:0,k:3});
+L.sort((a,b)=>a.z-b.z);
+for(const o of L){const dz=CD-o.z;if(dz<1.6)continue;ctx.globalAlpha=Math.max(.2,Math.min(1,1.35-dz/150));const s=sc(o.z);
+if(o.k===0){const[gx,gy]=P(o.x,o.z);ctx.fillStyle='#3a2616';ctx.fillRect(gx-.3*s,gy-2*s,.6*s,2*s);
+poly([[gx,gy-6.5*s],[gx-1.8*s,gy-2*s],[gx+1.8*s,gy-2*s]],'#103d25');poly([[gx,gy-8.6*s],[gx-1.4*s,gy-4.6*s],[gx+1.4*s,gy-4.6*s]],'#165232')}
+else if(o.k===1)carDraw(o.c.x,o.c.z,o.c.col,true,0);
+else if(o.k===2){const c=o.c,[gx,gy]=P(c.x,c.z),r=.55*s,w=Math.max(.08*s,r*Math.abs(Math.cos(c.a)));
+ctx.shadowColor='#ffb700';ctx.shadowBlur=Math.min(18,s*.6);ctx.fillStyle='#ffd60a';ctx.beginPath();ctx.ellipse(gx,gy-1.1*s,w,r,0,0,7);ctx.fill();ctx.shadowBlur=0}
+else carDraw(px,0,'#e63946',false,-(tx-px)*.05)}
+ctx.globalAlpha=1;
+ctx.fillStyle='#ffa200';for(const p of sparks)ctx.fillRect(p.x,p.y,5,5);
+ctx.restore()}
+function upd(){$('sc').textContent=Math.floor(dist);$('co').textContent=coinN;$('sp').textContent=Math.round(v*3)}
+function start(){cars=[];coins=[];sparks=[];v=45;dist=0;coinN=0;px=tx=0;tSpawn=1;cSpawn=2;shake=0;alive=true;
+$('msg').style.display='none';run=true;last=performance.now();sfx.start()}
+function crash(){run=false;alive=false;shake=1;sfx.crash();if(navigator.vibrate)navigator.vibrate(200);
+const[gx,gy]=P(px,0);for(let i=0;i<34;i++)sparks.push({x:gx,y:gy-50,vx:(Math.random()-.5)*700,vy:-Math.random()*500,l:1.2});
+const sc2=Math.floor(dist)+coinN*50;
+if(sc2>best){best=sc2;try{localStorage.setItem('hr_hard_best',best)}catch(e){}}
+$('hs').textContent=best;
+setTimeout(()=>{$('msg').innerHTML='<h1>💥 تحطمت!</h1><p>النتيجة: '+sc2+'<br>العملات: '+coinN+'</p><button id="go2">سباق جديد</button><p style="opacity:.6;font-size:16px;margin-top:10px">🏎️ لا تصدم السيارات!</p>';$('msg').style.display='flex';$('go2').onclick=start},900)}
+let ox=0,otx=0,dragging=false;
+function dstart(e){const t=e.touches?e.touches[0]:e;ox=t.clientX;otx=tx;dragging=true}
+function dmove(e){if(!dragging)return;const t=e.touches?e.touches[0]:e;tx=Math.max(-4.2,Math.min(4.2,otx+(t.clientX-ox)/innerWidth*14))}
+function dend(){dragging=false}
+addEventListener('touchstart',dstart,{passive:true});addEventListener('touchmove',dmove,{passive:true});addEventListener('touchend',dend);addEventListener('touchcancel',dend);
+addEventListener('mousedown',dstart);addEventListener('mousemove',dmove);addEventListener('mouseup',dend);
+const keys={l:0,r:0};
+addEventListener('keydown',e=>{const k=e.key;
+if(k==='ArrowLeft'||k==='a'||k==='A'){keys.l=1;e.preventDefault()}
+else if(k==='ArrowRight'||k==='d'||k==='D'){keys.r=1;e.preventDefault()}
+else if(k==='Enter'||k===' '||k==='Select'){const b=$('msg').style.display!=='none'&&($('go2')||$('go'));if(b){b.click();e.preventDefault()}}});
+addEventListener('keyup',e=>{const k=e.key;if(k==='ArrowLeft'||k==='a'||k==='A')keys.l=0;if(k==='ArrowRight'||k==='d'||k==='D')keys.r=0});
+$('go').onclick=start;
+function loop(now){requestAnimationFrame(loop);
+const dt=Math.min((now-last)/1000||0,.05);last=now;
+if(run){
+ v=Math.min(120,v+2.2*dt);dist+=v*dt*.1;
+ tx=Math.max(-4.2,Math.min(4.2,tx+(keys.r-keys.l)*14*dt));
+ px+=(tx-px)*(1-Math.exp(-14*dt));sfx.engine(v,Math.abs(tx-px));
+ tSpawn-=dt;if(tSpawn<=0){tSpawn=Math.max(.28,.9-v/160)*(.7+Math.random()*.6);
+  const x=lane();cars.push({x,z:-150,col:cols[Math.floor(Math.random()*cols.length)],f:.3+Math.random()*.6,tx:x,sw:1+Math.random()*3})}
+ cSpawn-=dt;if(cSpawn<=0){cSpawn=1.2+Math.random()*1.5;const x=lane();for(let i=0;i<4;i++)coins.push({x,z:-150-i*4,a:0})}
+ for(const c of cars){c.z+=v*c.f*dt;c.sw-=dt;if(c.sw<0&&c.z>-90){c.tx=lane();c.sw=99}
+  c.x+=(c.tx-c.x)*Math.min(1,3*dt);
+  if(!c.p&&c.z>0){c.p=1;if(Math.abs(c.x-px)<3.6){sfx.whoosh(c.x-px);if(Math.random()<.35)sfx.horn(c.x-px)}}
+  if(Math.abs(c.x-px)<1.7&&Math.abs(c.z)<3.4){crash();break}}
+ for(const c of coins){c.z+=v*dt;c.a+=4*dt;if(Math.abs(c.x-px)<1.6&&Math.abs(c.z)<1.6){c.dead=1;coinN++;sfx.coin()}}
+ cars=cars.filter(c=>c.z<14);coins=coins.filter(c=>!c.dead&&c.z<14);
+ dashOff+=v*dt;treeOff+=v*dt;upd()
+}else if(alive){dashOff+=14*dt;treeOff+=14*dt}
+for(const p of sparks){p.vy+=900*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt}
+sparks=sparks.filter(p=>p.l>0);
+shake=Math.max(0,shake-dt*1.8);camX=px*.3;
+render()}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
